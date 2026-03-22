@@ -9,7 +9,7 @@
       --bg: #1a1a2e;
       --header-bg: #16213e;
       --card-bg: #ffffff;
-      --card-played: #FFE566;
+      --card-played: #FFD700;
       --card-text: #333;
       --suit-red: #d43030;
       --suit-black: #333;
@@ -21,6 +21,7 @@
       --heart-ji-text: #d43030;
       --ak-bg: #f0f5ff;
       --ak-text: #1e40af;
+      --voice-active: #22c55e;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -62,16 +63,41 @@
     .stat-val.danger { color: #e94560; }
     .stat-lbl { font-size: 6px; color: #555; text-transform: uppercase; margin-top: 1px; }
 
+    /* ── Voice status ── */
+    .voice-status {
+      background: var(--header-bg);
+      padding: 4px 10px;
+      text-align: center;
+      font-size: 10px;
+      color: #666;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .voice-status.active {
+      color: var(--voice-active);
+      background: rgba(34,197,94,0.1);
+    }
+    .voice-status .listening {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--voice-active);
+      margin-right: 4px;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
     /* ── Card grid ── */
     .grid-wrap { padding: 3px 3px 82px; }
     .card-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
-      /* gap set by JS via --cell-gap var */
       gap: var(--cell-gap, 1px);
     }
     .card-cell {
-      /* size set entirely by JS via inline style */
       border-radius: 2px;
       display: flex;
       flex-direction: column;
@@ -124,7 +150,7 @@
     .card-cell.joker .rank { color: var(--joker-text); }
     .card-cell.heart-ji .rank { color: var(--heart-ji-text); }
 
-    /* card text — 字体放大两倍（原22px→44px） */
+    /* card text */
     .rank { font-size: 44px; font-weight: 900; line-height: 1; }
     .suit-line { font-size: 24px; font-weight: 800; }
     .extra-tag { font-size: 20px; font-weight: 900; margin-top: 0; letter-spacing: -0.3px; }
@@ -154,6 +180,8 @@
     .btn-summary { background: rgba(255,255,255,0.09); color: #bbb; }
     .btn-next    { background: #e94560; color: #fff; }
     .btn-reset   { background: rgba(200,50,50,0.15); color: #ff8888; }
+    .btn-voice   { background: #1e40af; color: #fff; }
+    .btn-voice.active { background: var(--voice-active); }
 
     /* ── Summary modal ── */
     .modal {
@@ -214,6 +242,40 @@
       white-space: nowrap;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Voice help modal ── */
+    .help-modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 40;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .help-modal.open { display: flex; }
+    .help-content {
+      background: var(--header-bg);
+      border-radius: 16px;
+      padding: 20px;
+      max-width: 400px;
+      width: 100%;
+    }
+    .help-title { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 12px; text-align: center; }
+    .help-item { font-size: 22px; color: #aaa; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .help-item strong { color: #FFE566; }
+    .help-close {
+      margin-top: 16px;
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 26px;
+      font-weight: 700;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -222,7 +284,7 @@
 <header>
   <div class="header-left">
     <h1>🃏 掼蛋记牌器</h1>
-    <div class="sub">点击牌面 · 标记已出</div>
+    <div class="sub">点击或语音 · 标记已出</div>
   </div>
   <div class="round-info">
     <div class="round-label">第</div>
@@ -255,6 +317,11 @@
   </div>
 </div>
 
+<!-- Voice status -->
+<div class="voice-status" id="voiceStatus">
+  🎤 点击「语音」按钮开始语音记牌
+</div>
+
 <!-- Card Grid -->
 <div class="grid-wrap">
   <div class="card-grid" id="cardGrid"></div>
@@ -262,9 +329,10 @@
 
 <!-- Toolbar -->
 <div class="toolbar">
-  <button class="btn btn-summary" id="btnSummary">📊 分布</button>
-  <button class="btn btn-next"    id="btnNext">✅ 进入下轮</button>
-  <button class="btn btn-reset"   id="btnReset">🗑 清空</button>
+  <button class="btn btn-voice" id="btnVoice">🎤</button>
+  <button class="btn btn-summary" id="btnSummary">📊</button>
+  <button class="btn btn-next" id="btnNext">✅</button>
+  <button class="btn btn-reset" id="btnReset">🗑</button>
 </div>
 
 <!-- Toast -->
@@ -279,10 +347,24 @@
   </div>
 </div>
 
+<!-- Help Modal -->
+<div class="help-modal" id="helpModal">
+  <div class="help-content">
+    <div class="help-title">🎤 语音指令</div>
+    <div class="help-item"><strong>大王</strong> / <strong>小王</strong></div>
+    <div class="help-item"><strong>黑桃2</strong> / <strong>梅花2</strong> / <strong>方块2</strong></div>
+    <div class="help-item"><strong>红心2</strong> 或 <strong>红心极</strong></div>
+    <div class="help-item"><strong>黑桃A</strong> / <strong>红心A</strong> / <strong>方块A</strong> / <strong>梅花A</strong></div>
+    <div class="help-item"><strong>黑桃K</strong> / <strong>红心K</strong> / <strong>方块K</strong> / <strong>梅花K</strong></div>
+    <div class="help-item"><strong>撤销</strong> - 取消上一张牌</div>
+    <div class="help-item"><strong>下一轮</strong> - 清空进入下轮</div>
+    <button class="help-close" id="btnHelpClose">知道了</button>
+  </div>
+</div>
+
 <script>
 // ──────────────────────────────────────────────
 // 牌堆：两副牌，共28张关键牌
-// 大王2 + 小王2 + 极(2)6 + 红心极(2)2 + A8 + K8
 // ──────────────────────────────────────────────
 const CARDS = [
   // 大王×2
@@ -325,10 +407,56 @@ const CARDS = [
 
 const SUIT_SYM = { spades:'♠', hearts:'♥', diamonds:'♦', clubs:'♣' };
 
+// 语音关键词映射
+const VOICE_MAP = {
+  '大王': { rank:'大王', suit:'joker' },
+  '大鬼': { rank:'大王', suit:'joker' },
+  '小王': { rank:'小王', suit:'joker' },
+  '小鬼': { rank:'小王', suit:'joker' },
+  '黑桃二': { rank:'2', suit:'spades' },
+  '黑桃2': { rank:'2', suit:'spades' },
+  '黑桃极': { rank:'2', suit:'spades' },
+  '梅花二': { rank:'2', suit:'clubs' },
+  '梅花2': { rank:'2', suit:'clubs' },
+  '梅花极': { rank:'2', suit:'clubs' },
+  '方块二': { rank:'2', suit:'diamonds' },
+  '方块2': { rank:'2', suit:'diamonds' },
+  '方块极': { rank:'2', suit:'diamonds' },
+  '红心二': { rank:'♥', suit:'hearts' },
+  '红心2': { rank:'♥', suit:'hearts' },
+  '红心极': { rank:'♥', suit:'hearts' },
+  '红桃二': { rank:'♥', suit:'hearts' },
+  '红桃2': { rank:'♥', suit:'hearts' },
+  '红桃极': { rank:'♥', suit:'hearts' },
+  '极': { rank:'2', suit:'any' }, // 单说"极"随机标记一个极牌
+  '黑桃a': { rank:'A', suit:'spades' },
+  '黑桃A': { rank:'A', suit:'spades' },
+  '红心a': { rank:'A', suit:'hearts' },
+  '红心A': { rank:'A', suit:'hearts' },
+  '红桃a': { rank:'A', suit:'hearts' },
+  '红桃A': { rank:'A', suit:'hearts' },
+  '方块a': { rank:'A', suit:'diamonds' },
+  '方块A': { rank:'A', suit:'diamonds' },
+  '梅花a': { rank:'A', suit:'clubs' },
+  '梅花A': { rank:'A', suit:'clubs' },
+  '黑桃k': { rank:'K', suit:'spades' },
+  '黑桃K': { rank:'K', suit:'spades' },
+  '红心k': { rank:'K', suit:'hearts' },
+  '红心K': { rank:'K', suit:'hearts' },
+  '红桃k': { rank:'K', suit:'hearts' },
+  '红桃K': { rank:'K', suit:'hearts' },
+  '方块k': { rank:'K', suit:'diamonds' },
+  '方块K': { rank:'K', suit:'diamonds' },
+  '梅花k': { rank:'K', suit:'clubs' },
+  '梅花K': { rank:'K', suit:'clubs' },
+};
+
 // ─── State ───────────────────────────────────
 let played = new Set();
 let history = [];
 let round   = 1;
+let recognition = null;
+let voiceActive = false;
 
 // ─── Build grid ──────────────────────────────
 function buildGrid() {
@@ -364,11 +492,10 @@ function buildGrid() {
 function resizeCards() {
   const COLS = 7;
   const ROWS = 4;
-  const GAP  = 2; // px, fixed
+  const GAP  = 2;
 
   const wrap = document.querySelector('.grid-wrap');
   const availableW = wrap.clientWidth - GAP * (COLS + 1);
-  // offsetTop gives distance from viewport top (accounts for sticky header)
   const availableH = window.innerHeight - wrap.offsetTop - 82;
 
   const cellW = Math.floor(availableW / COLS);
@@ -376,7 +503,7 @@ function resizeCards() {
   const cellSize = Math.min(cellW, cellH);
 
   document.documentElement.style.setProperty('--cell-size', cellSize + 'px');
-  document.documentElement.style.setProperty('--cell-gap',   GAP + 'px');
+  document.documentElement.style.setProperty('--cell-gap', GAP + 'px');
 }
 
 // ─── Toggle ──────────────────────────────────
@@ -384,20 +511,14 @@ function toggleCard(idx) {
   if (played.has(idx)) {
     played.delete(idx);
     history.pop();
-    // Remove animation class
-    const cell = document.getElementById('cardGrid').children[idx];
-    cell.classList.remove('played', 'just-played');
     showToast('取消：' + CARDS[idx].label);
   } else {
     played.add(idx);
     history.push(idx);
-    // Add just-played animation class
-    const cell = document.getElementById('cardGrid').children[idx];
-    cell.classList.add('played', 'just-played');
-    setTimeout(() => cell.classList.remove('just-played'), 300);
     showToast('已出：' + CARDS[idx].label);
   }
   updateStats();
+  buildGrid();
 }
 
 // ─── Update stats ────────────────────────────
@@ -422,6 +543,126 @@ function updateStats() {
   const kL = CARDS.filter((c,i) => c.rank==='K' && !played.has(i)).length;
   val('valK').textContent = kL;
   val('valK').className = 'stat-val' + (kL === 0 ? ' danger' : kL <= 2 ? ' warn' : '');
+}
+
+// ─── Voice recognition ───────────────────────
+function initVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showToast('浏览器不支持语音识别');
+    return false;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'zh-CN';
+
+  recognition.onresult = (event) => {
+    const last = event.results.length - 1;
+    const text = event.results[last][0].transcript.trim();
+    console.log('识别到:', text);
+    processVoiceCommand(text);
+  };
+
+  recognition.onerror = (event) => {
+    console.error('语音识别错误:', event.error);
+    if (event.error === 'no-speech') {
+      showToast('没有听到声音');
+    }
+  };
+
+  recognition.onend = () => {
+    if (voiceActive) {
+      // 自动重启
+      recognition.start();
+    }
+  };
+
+  return true;
+}
+
+function processVoiceCommand(text) {
+  // 检查特殊命令
+  if (text.includes('撤销') || text.includes('取消')) {
+    undoLast();
+    return;
+  }
+  if (text.includes('下一轮') || text.includes('下一把') || text.includes('清空')) {
+    nextRound();
+    return;
+  }
+
+  // 匹配牌
+  for (const [keyword, card] of Object.entries(VOICE_MAP)) {
+    if (text.includes(keyword)) {
+      markCardByVoice(card);
+      return;
+    }
+  }
+
+  showToast('未识别：' + text);
+}
+
+function markCardByVoice(cardInfo) {
+  // 找到第一个匹配且未打出的牌
+  let foundIdx = -1;
+
+  if (cardInfo.suit === 'any') {
+    // 单说"极"，随机标记一个未打出的极牌
+    foundIdx = CARDS.findIndex((c, i) => 
+      (c.type === 'ji' || c.type === 'heart-ji') && !played.has(i)
+    );
+  } else {
+    foundIdx = CARDS.findIndex((c, i) => 
+      c.rank === cardInfo.rank && c.suit === cardInfo.suit && !played.has(i)
+    );
+  }
+
+  if (foundIdx >= 0) {
+    played.add(foundIdx);
+    history.push(foundIdx);
+    showToast('已出：' + CARDS[foundIdx].label);
+    updateStats();
+    buildGrid();
+  } else {
+    // 已经打完了，提示
+    const suitName = { spades:'黑桃', hearts:'红心', diamonds:'方块', clubs:'梅花', joker:'' }[cardInfo.suit];
+    showToast(suitName + cardInfo.rank + ' 已打完');
+  }
+}
+
+function toggleVoice() {
+  if (!recognition && !initVoice()) return;
+
+  voiceActive = !voiceActive;
+  const btn = document.getElementById('btnVoice');
+  const status = document.getElementById('voiceStatus');
+
+  if (voiceActive) {
+    recognition.start();
+    btn.classList.add('active');
+    status.classList.add('active');
+    status.innerHTML = '<span class="listening"></span> 正在聆听...';
+  } else {
+    recognition.stop();
+    btn.classList.remove('active');
+    status.classList.remove('active');
+    status.textContent = '🎤 点击「语音」按钮开始语音记牌';
+  }
+}
+
+// ─── Undo ────────────────────────────────────
+function undoLast() {
+  if (history.length === 0) {
+    showToast('没有可撤销的');
+    return;
+  }
+  const idx = history.pop();
+  played.delete(idx);
+  showToast('撤销：' + CARDS[idx].label);
+  updateStats();
+  buildGrid();
 }
 
 // ─── Summary modal ───────────────────────────
@@ -506,12 +747,19 @@ function showToast(msg) {
 }
 
 // ─── Init ─────────────────────────────────────
+document.getElementById('btnVoice').addEventListener('click', toggleVoice);
 document.getElementById('btnSummary').addEventListener('click', showSummary);
 document.getElementById('btnNext').addEventListener('click', nextRound);
 document.getElementById('btnReset').addEventListener('click', resetAll);
+
 document.getElementById('summaryModal').addEventListener('click', e => {
   if (e.target === document.getElementById('summaryModal'))
     document.getElementById('summaryModal').classList.remove('open');
+});
+
+document.getElementById('helpModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('helpModal') || e.target.id === 'btnHelpClose')
+    document.getElementById('helpModal').classList.remove('open');
 });
 
 buildGrid();
@@ -520,6 +768,11 @@ updateStats();
 
 window.addEventListener('resize', resizeCards);
 window.addEventListener('orientationchange', () => setTimeout(resizeCards, 100));
+
+// 首次打开显示语音帮助
+setTimeout(() => {
+  document.getElementById('helpModal').classList.add('open');
+}, 500);
 </script>
 </body>
 </html>
