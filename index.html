@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>掼蛋记牌器</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --header-bg: #16213e;
+      --card-bg: #ffffff;
+      --card-played: #FFE566;
+      --card-text: #333;
+      --suit-red: #d43030;
+      --suit-black: #333;
+      --joker-bg: #f0e6ff;
+      --joker-text: #7c3aed;
+      --ji-bg: #f5f0ff;
+      --ji-text: #7c3aed;
+      --heart-ji-bg: #fff5f5;
+      --heart-ji-text: #d43030;
+      --ak-bg: #f0f5ff;
+      --ak-text: #1e40af;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--card-text);
+      font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--header-bg);
+      padding: 3px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-left h1 { font-size: 34px; font-weight: 800; color: #e94560; line-height: 1; }
+    .header-left .sub { font-size: 7px; color: #666; margin-top: 1px; }
+    .round-info { text-align: right; }
+    .round-info .round-label { font-size: 7px; color: #888; }
+    .round-info .round-num { font-size: 16px; font-weight: 900; color: #e94560; line-height: 1; }
+
+    /* ── Stats ── */
+    .stats-bar {
+      background: var(--header-bg);
+      padding: 2px 8px 4px;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .stat-item { text-align: center; }
+    .stat-val { font-size: 40px; font-weight: 900; color: #fff; line-height: 1; }
+    .stat-val.warn { color: #FFE566; }
+    .stat-val.danger { color: #e94560; }
+    .stat-lbl { font-size: 6px; color: #555; text-transform: uppercase; margin-top: 1px; }
+
+    /* ── Card grid ── */
+    .grid-wrap { padding: 3px 3px 82px; }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      /* gap set by JS via --cell-gap var */
+      gap: var(--cell-gap, 1px);
+    }
+    .card-cell {
+      /* size set entirely by JS via inline style */
+      border-radius: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.12s, transform 0.1s, opacity 0.12s;
+      user-select: none;
+      -webkit-user-select: none;
+      background: var(--card-bg);
+      width: var(--cell-size);
+      height: var(--cell-size);
+    }
+    .card-cell:active { transform: scale(0.93); }
+
+    /* played: yellow background */
+    .card-cell.played {
+      background: #FFD700 !important;
+      box-shadow: 0 0 4px rgba(255,215,0,0.5) !important;
+      transform: scale(1.02) !important;
+    }
+    .card-cell.played .rank,
+    .card-cell.played .suit-line,
+    .card-cell.played .extra-tag {
+      opacity: 0.2 !important;
+      color: #888 !important;
+    }
+
+    /* click flash animation */
+    @keyframes flash-yellow {
+      0%   { background: #FFD700; transform: scale(1.05); }
+      100% { background: #FFD700; transform: scale(1.02); }
+    }
+    .card-cell.just-played {
+      animation: flash-yellow 0.2s ease-out forwards;
+    }
+
+    /* card types backgrounds (only apply when NOT played) */
+    .card-cell.joker:not(.played)  { background: var(--joker-bg); }
+    .card-cell.ji:not(.played)     { background: var(--ji-bg); }
+    .card-cell.heart-ji:not(.played) { background: var(--heart-ji-bg); }
+    .card-cell.ak:not(.played)    { background: var(--ak-bg); }
+
+    /* text colors */
+    .card-cell.red .rank  { color: var(--suit-red); }
+    .card-cell.black .rank { color: var(--suit-black); }
+    .card-cell.ji .rank,
+    .card-cell.ji .extra-tag { color: var(--ji-text); }
+    .card-cell.joker .rank { color: var(--joker-text); }
+    .card-cell.heart-ji .rank { color: var(--heart-ji-text); }
+
+    /* card text — 字体放大两倍（原22px→44px） */
+    .rank { font-size: 44px; font-weight: 900; line-height: 1; }
+    .suit-line { font-size: 24px; font-weight: 800; }
+    .extra-tag { font-size: 20px; font-weight: 900; margin-top: 0; letter-spacing: -0.3px; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--header-bg);
+      padding: 5px 8px;
+      padding-bottom: max(5px, env(safe-area-inset-bottom));
+      display: flex;
+      gap: 5px;
+      z-index: 20;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .btn {
+      flex: 1;
+      padding: 7px 0;
+      border-radius: 6px;
+      border: none;
+      font-size: 28px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-summary { background: rgba(255,255,255,0.09); color: #bbb; }
+    .btn-next    { background: #e94560; color: #fff; }
+    .btn-reset   { background: rgba(200,50,50,0.15); color: #ff8888; }
+
+    /* ── Summary modal ── */
+    .modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 30;
+      align-items: flex-end;
+    }
+    .modal.open { display: flex; }
+    .modal-sheet {
+      background: var(--header-bg);
+      width: 100%;
+      border-radius: 14px 14px 0 0;
+      padding: 12px 10px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      max-height: 65vh;
+      overflow-y: auto;
+    }
+    .modal-handle {
+      width: 36px; height: 3px;
+      background: #444; border-radius: 2px;
+      margin: 0 auto 10px;
+    }
+    .modal-title { font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 10px; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .modal-card {
+      background: #0d1a30;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .modal-card-title {
+      font-size: 18px; color: #666;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 5px;
+    }
+    .modal-row { display: flex; justify-content: space-between; align-items: center; padding: 1px 0; }
+    .modal-row-name { font-size: 22px; color: #aaa; }
+    .modal-row-num { font-size: 24px; font-weight: 800; color: #fff; }
+    .modal-row-num.zero { color: #444; }
+    .modal-row-num.low  { color: #FFE566; }
+    .modal-row-num.out  { color: #e94560; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      top: 72px; left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      background: rgba(0,0,0,0.78);
+      color: #fff;
+      padding: 6px 22px;
+      border-radius: 20px;
+      font-size: 26px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="header-left">
+    <h1>🃏 掼蛋记牌器</h1>
+    <div class="sub">点击牌面 · 标记已出</div>
+  </div>
+  <div class="round-info">
+    <div class="round-label">第</div>
+    <div class="round-num" id="roundNum">1</div>
+    <div class="round-label">轮</div>
+  </div>
+</header>
+
+<!-- Stats -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-val" id="valTotal">28</div>
+    <div class="stat-lbl">剩余</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" id="valJoker">4</div>
+    <div class="stat-lbl">王</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" id="valJi">8</div>
+    <div class="stat-lbl">极(2)</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" id="valA">8</div>
+    <div class="stat-lbl">A</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" id="valK">8</div>
+    <div class="stat-lbl">K</div>
+  </div>
+</div>
+
+<!-- Card Grid -->
+<div class="grid-wrap">
+  <div class="card-grid" id="cardGrid"></div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <button class="btn btn-summary" id="btnSummary">📊 分布</button>
+  <button class="btn btn-next"    id="btnNext">✅ 进入下轮</button>
+  <button class="btn btn-reset"   id="btnReset">🗑 清空</button>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Summary Modal -->
+<div class="modal" id="summaryModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📊 剩余牌力分布</div>
+    <div class="modal-grid" id="summaryContent"></div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────────────────────
+// 牌堆：两副牌，共28张关键牌
+// 大王2 + 小王2 + 极(2)6 + 红心极(2)2 + A8 + K8
+// ──────────────────────────────────────────────
+const CARDS = [
+  // 大王×2
+  { rank:'大王', suit:'joker',  label:'大王', type:'joker',   color:'joker' },
+  { rank:'大王', suit:'joker',  label:'大王', type:'joker',   color:'joker' },
+  // 小王×2
+  { rank:'小王', suit:'joker',  label:'小王', type:'joker',   color:'joker' },
+  { rank:'小王', suit:'joker',  label:'小王', type:'joker',   color:'joker' },
+  // 黑桃极2×2
+  { rank:'2',  suit:'spades', label:'2♠极', type:'ji',     color:'black' },
+  { rank:'2',  suit:'spades', label:'2♠极', type:'ji',     color:'black' },
+  // 梅花极2×2
+  { rank:'2',  suit:'clubs',  label:'2♣极', type:'ji',     color:'black' },
+  { rank:'2',  suit:'clubs',  label:'2♣极', type:'ji',     color:'black' },
+  // 方块极2×2
+  { rank:'2',  suit:'diamonds',label:'2♦极', type:'ji',    color:'red' },
+  { rank:'2',  suit:'diamonds',label:'2♦极', type:'ji',    color:'red' },
+  // 红心极×2（♥极）
+  { rank:'♥',  suit:'hearts', label:'红心极', type:'heart-ji', color:'red' },
+  { rank:'♥',  suit:'hearts', label:'红心极', type:'heart-ji', color:'red' },
+  // A×8
+  { rank:'A',  suit:'spades',   label:'A♠', type:'ak', color:'black' },
+  { rank:'A',  suit:'spades',   label:'A♠', type:'ak', color:'black' },
+  { rank:'A',  suit:'hearts',   label:'A♥', type:'ak', color:'red' },
+  { rank:'A',  suit:'hearts',   label:'A♥', type:'ak', color:'red' },
+  { rank:'A',  suit:'diamonds', label:'A♦', type:'ak', color:'red' },
+  { rank:'A',  suit:'diamonds', label:'A♦', type:'ak', color:'red' },
+  { rank:'A',  suit:'clubs',    label:'A♣', type:'ak', color:'black' },
+  { rank:'A',  suit:'clubs',    label:'A♣', type:'ak', color:'black' },
+  // K×8
+  { rank:'K',  suit:'spades',   label:'K♠', type:'ak', color:'black' },
+  { rank:'K',  suit:'spades',   label:'K♠', type:'ak', color:'black' },
+  { rank:'K',  suit:'hearts',   label:'K♥', type:'ak', color:'red' },
+  { rank:'K',  suit:'hearts',   label:'K♥', type:'ak', color:'red' },
+  { rank:'K',  suit:'diamonds', label:'K♦', type:'ak', color:'red' },
+  { rank:'K',  suit:'diamonds', label:'K♦', type:'ak', color:'red' },
+  { rank:'K',  suit:'clubs',    label:'K♣', type:'ak', color:'black' },
+  { rank:'K',  suit:'clubs',    label:'K♣', type:'ak', color:'black' },
+];
+
+const SUIT_SYM = { spades:'♠', hearts:'♥', diamonds:'♦', clubs:'♣' };
+
+// ─── State ───────────────────────────────────
+let played = new Set();
+let history = [];
+let round   = 1;
+
+// ─── Build grid ──────────────────────────────
+function buildGrid() {
+  const grid = document.getElementById('cardGrid');
+  grid.innerHTML = '';
+  CARDS.forEach((card, idx) => {
+    const isPlayed = played.has(idx);
+    const cell = document.createElement('div');
+    cell.className = [
+      'card-cell',
+      card.type,
+      card.color,
+      isPlayed ? 'played' : ''
+    ].join(' ');
+
+    let html = `<span class="rank">${card.rank}</span>`;
+    if (card.suit !== 'joker') {
+      html += `<span class="suit-line">${SUIT_SYM[card.suit]}</span>`;
+    }
+    if (card.type === 'ji' || card.type === 'joker') {
+      html += `<span class="extra-tag">极</span>`;
+    }
+    if (card.type === 'heart-ji') {
+      html += `<span class="extra-tag" style="color:#d43030">极</span>`;
+    }
+    cell.innerHTML = html;
+    cell.addEventListener('click', () => toggleCard(idx));
+    grid.appendChild(cell);
+  });
+}
+
+// ─── Resize cards to fit screen ───────────────
+function resizeCards() {
+  const COLS = 7;
+  const ROWS = 4;
+  const GAP  = 2; // px, fixed
+
+  const wrap = document.querySelector('.grid-wrap');
+  const availableW = wrap.clientWidth - GAP * (COLS + 1);
+  // offsetTop gives distance from viewport top (accounts for sticky header)
+  const availableH = window.innerHeight - wrap.offsetTop - 82;
+
+  const cellW = Math.floor(availableW / COLS);
+  const cellH = Math.floor(availableH / ROWS);
+  const cellSize = Math.min(cellW, cellH);
+
+  document.documentElement.style.setProperty('--cell-size', cellSize + 'px');
+  document.documentElement.style.setProperty('--cell-gap',   GAP + 'px');
+}
+
+// ─── Toggle ──────────────────────────────────
+function toggleCard(idx) {
+  if (played.has(idx)) {
+    played.delete(idx);
+    history.pop();
+    // Remove animation class
+    const cell = document.getElementById('cardGrid').children[idx];
+    cell.classList.remove('played', 'just-played');
+    showToast('取消：' + CARDS[idx].label);
+  } else {
+    played.add(idx);
+    history.push(idx);
+    // Add just-played animation class
+    const cell = document.getElementById('cardGrid').children[idx];
+    cell.classList.add('played', 'just-played');
+    setTimeout(() => cell.classList.remove('just-played'), 300);
+    showToast('已出：' + CARDS[idx].label);
+  }
+  updateStats();
+}
+
+// ─── Update stats ────────────────────────────
+function updateStats() {
+  const left = CARDS.length - played.size;
+  const val = id => document.getElementById(id);
+
+  val('valTotal').textContent = left;
+
+  const jokerL = CARDS.filter((c,i) => c.type==='joker' && !played.has(i)).length;
+  val('valJoker').textContent = jokerL;
+  val('valJoker').className = 'stat-val' + (jokerL === 0 ? ' danger' : '');
+
+  const jiL = CARDS.filter((c,i) => (c.type==='ji' || c.type==='heart-ji') && !played.has(i)).length;
+  val('valJi').textContent = jiL;
+  val('valJi').className = 'stat-val' + (jiL === 0 ? ' danger' : '');
+
+  const aL = CARDS.filter((c,i) => c.rank==='A' && !played.has(i)).length;
+  val('valA').textContent = aL;
+  val('valA').className = 'stat-val' + (aL === 0 ? ' danger' : aL <= 2 ? ' warn' : '');
+
+  const kL = CARDS.filter((c,i) => c.rank==='K' && !played.has(i)).length;
+  val('valK').textContent = kL;
+  val('valK').className = 'stat-val' + (kL === 0 ? ' danger' : kL <= 2 ? ' warn' : '');
+}
+
+// ─── Summary modal ───────────────────────────
+function showSummary() {
+  const el = document.getElementById('summaryContent');
+  const sections = [
+    {
+      title: '🃏 王炸',
+      rows: [
+        { name:'大王', total:2, filter: c => c.label==='大王' },
+        { name:'小王', total:2, filter: c => c.label==='小王' },
+      ]
+    },
+    {
+      title: '⚡ 极(2)',
+      rows: [
+        { name:'♠极', total:2, filter: c => c.label==='2♠极' },
+        { name:'♣极', total:2, filter: c => c.label==='2♣极' },
+        { name:'♦极', total:2, filter: c => c.label==='2♦极' },
+        { name:'♥极', total:2, filter: c => c.label==='红心极' },
+      ]
+    },
+    {
+      title: '🅰️ A',
+      rows: [
+        { name:'♠A', total:2, filter: c => c.label==='A♠' },
+        { name:'♥A', total:2, filter: c => c.label==='A♥' },
+        { name:'♦A', total:2, filter: c => c.label==='A♦' },
+        { name:'♣A', total:2, filter: c => c.label==='A♣' },
+      ]
+    },
+    {
+      title: '👑 K',
+      rows: [
+        { name:'♠K', total:2, filter: c => c.label==='K♠' },
+        { name:'♥K', total:2, filter: c => c.label==='K♥' },
+        { name:'♦K', total:2, filter: c => c.label==='K♦' },
+        { name:'♣K', total:2, filter: c => c.label==='K♣' },
+      ]
+    },
+  ];
+
+  el.innerHTML = sections.map(sec => `
+    <div class="modal-card">
+      <div class="modal-card-title">${sec.title}</div>
+      ${sec.rows.map(row => {
+        const rem = CARDS.filter((c,i) => row.filter(c) && !played.has(i)).length;
+        const cls = rem === 0 ? 'zero' : rem === 1 ? 'low' : '';
+        return `<div class="modal-row">
+          <span class="modal-row-name">${row.name}</span>
+          <span class="modal-row-num ${cls}">${rem}/${row.total}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `).join('');
+
+  document.getElementById('summaryModal').classList.add('open');
+}
+
+// ─── Actions ─────────────────────────────────
+function nextRound() {
+  played.clear(); history = []; round++;
+  document.getElementById('roundNum').textContent = round;
+  buildGrid(); updateStats();
+  showToast('第 ' + round + ' 轮开始');
+}
+
+function resetAll() {
+  if (!confirm('确定清空所有记录？')) return;
+  played.clear(); history = []; round = 1;
+  document.getElementById('roundNum').textContent = 1;
+  buildGrid(); updateStats();
+  showToast('已全部清空');
+}
+
+// ─── Toast ───────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1100);
+}
+
+// ─── Init ─────────────────────────────────────
+document.getElementById('btnSummary').addEventListener('click', showSummary);
+document.getElementById('btnNext').addEventListener('click', nextRound);
+document.getElementById('btnReset').addEventListener('click', resetAll);
+document.getElementById('summaryModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('summaryModal'))
+    document.getElementById('summaryModal').classList.remove('open');
+});
+
+buildGrid();
+resizeCards();
+updateStats();
+
+window.addEventListener('resize', resizeCards);
+window.addEventListener('orientationchange', () => setTimeout(resizeCards, 100));
+</script>
+</body>
+</html>
